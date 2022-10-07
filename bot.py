@@ -23,8 +23,7 @@ dp = Dispatcher(bot, storage=storage)
 
 
 @dp.message_handler(commands=['start'], state="*")
-async def start_bot(message: types.Message, state=FSMContext):
-        # TODO добавить редактирование сообщения, чтобы работать с одним сообщением
+async def show_schedule(message: types.Message, state=FSMContext):
         current_state = await state.get_state()
         message_id = message.message_id
         bot_message = message_id + 1
@@ -39,10 +38,6 @@ async def start_bot(message: types.Message, state=FSMContext):
         
         await message.answer(text=Message.show_schedule, reply_markup=kb)
 
-@dp.message_handler(state="*")
-async def count_messages_take(message: types.Message, state: FSMContext):
-        async with state.proxy() as data:
-                data['count_messages'] += 1
 
 @dp.callback_query_handler(lambda callback: "week" in callback.data, state=Schedule.click_show_schedule)
 async def show_schedule(callback_query: types.callback_query, state=FSMContext):
@@ -69,30 +64,21 @@ async def show_schedule(callback_query: types.callback_query, state=FSMContext):
                         url_to_pdf_file_schedule = item.get("attachments")[0].get("file")
                         download_schedule(url_to_pdf_file_schedule)
                         image_schedule = convert_pdf_to_image()
-                        
                         kb_menu = create_inline_keyboard(model_keyboard_menu)
-                        
-                        
-                        await bot.edit_message_reply_markup(chat_id=chat_id, message_id=bot_message, reply_markup=kb_menu)
-                        await bot.send_photo(chat_id=chat_id, photo=image_schedule)
+                        await bot.send_photo(chat_id=chat_id, photo=image_schedule, reply_markup=kb_menu)
                         await Schedule.click_in_menu.set()
                         return
 
 @dp.callback_query_handler(state=Schedule.click_in_menu)
 async def prepare_init_state(callback_query: types.callback_query, state: FSMContext):
-       # TODO: Вычислить сообщение бота после отправки нескольких сообщений от пользователея
-        
+       
         states: dict = await state.get_data()
-        
-        # count_messages: int = states.get("count_messages")
-        message_id_with_schedule : int  = states.get("message_with_schedule")
+        message_id_with_schedule = callback_query.message.message_id
         start_message_id = states.get("start_message_bot")
         chat_id = callback_query.message.chat.id
         kb = create_inline_keyboard(week)
         await bot.delete_message(chat_id=chat_id, message_id=message_id_with_schedule)
-        async with state.proxy() as data:
-                data["message_with_schedule"] = message_id_with_schedule + 1
-                data["count_messages"] = 0
+        
         await Schedule.click_show_schedule.set()
         await bot.edit_message_text(text=Message.show_schedule, chat_id=chat_id, message_id=start_message_id, reply_markup=kb)
         
