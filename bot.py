@@ -3,17 +3,15 @@ from aiogram.dispatcher import FSMContext
 from aiogram import Bot, Dispatcher
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 
-from models.week_model import week
-
-from service.request import get_schedule, download_schedule
-from service.convert_images import convert_pdf_to_image
+from database.Products import Products,initialize_db, db_close
 from service.Messages import Message
 
 from keyboards.create_keyboard import create_inline_keyboard
-from keyboards.models import model_keyboard_menu
 
 
-from states.Schedule import Schedule
+from models.models_keyboard import start_menu
+
+from states.ListProducts import ListProduct
 from settings import TOKEN
 
 
@@ -24,61 +22,41 @@ dp = Dispatcher(bot, storage=storage)
 
 @dp.message_handler(commands=['start'], state="*")
 async def show_schedule(message: types.Message, state=FSMContext):
-        current_state = await state.get_state()
-        message_id = message.message_id
-        bot_message = message_id + 1
-        if current_state is not None:
-                await state.finish()
-        async with state.proxy() as data:
-                data['start_message'] = message
-                data["start_message_bot"] = bot_message        
-        await Schedule.click_show_schedule.set()
-        
-        kb = create_inline_keyboard(week)
-        
-        await message.answer(text=Message.show_schedule, reply_markup=kb)
+       kb = create_inline_keyboard(start_menu)
+       await message.answer(text="Вот моё меню", reply_markup=kb)
 
-
-@dp.callback_query_handler(lambda callback: "week" in callback.data, state=Schedule.click_show_schedule)
+@dp.callback_query_handler(lambda callback: "add_product" in callback.data)
 async def show_schedule(callback_query: types.callback_query, state=FSMContext):
-        states: dict = await state.get_data()
-        bot_message: int = states.get("start_message_bot")
-        message_with_schedule: int = states.get("message_with_schedule")
-        if message_with_schedule is None:
-                message_with_schedule: int = bot_message + 1
-        
-        chat_id: int= callback_query.message.chat.id
-        
-        async with state.proxy() as data:
-                data["message_with_schedule"] = message_with_schedule
-        
-        await bot.edit_message_text(text=Message.find_schedule,chat_id=chat_id,message_id=bot_message)
-        try:
-                list_schedule = get_schedule()
-        except:
-                await bot.send_message(chat_id=chat_id, text=Message.have_error)
-        name_week = week[callback_query.data].lower()
-        for item in list_schedule:
-                callback_data_name_week = item.get("type").get("name").lower()
-                if  callback_data_name_week == name_week:
-                        url_to_pdf_file_schedule = item.get("attachments")[0].get("file")
-                        download_schedule(url_to_pdf_file_schedule)
-                        image_schedule = convert_pdf_to_image()
-                        kb_menu = create_inline_keyboard(model_keyboard_menu)
-                        await bot.send_photo(chat_id=chat_id, photo=image_schedule, reply_markup=kb_menu)
-                        await Schedule.click_in_menu.set()
-                        return
+        await ListProduct.add_product.set()
+        chat_id: int = callback_query.message.chat.id
+        await bot.send_message(chat_id=chat_id, text="Отправь мне название продукта")
 
-@dp.callback_query_handler(state=Schedule.click_in_menu)
+@dp.message_handler(state=ListProduct.add_product)
+async def show_schedule(message: types.Message, state=FSMContext):
+        product = message.text
+        chat_id = message.chat.id
+        try:
+                Products.create(name=product)
+                
+        except Exception:
+                db_close()
+                initialize_db()
+                
+                
+                        
+        await state.finish()
+        await bot.send_message(chat_id=chat_id, text="Готово!")
+
+
+
+@dp.callback_query_handler(lambda callback: "list_products" in callback.data)
 async def prepare_init_state(callback_query: types.callback_query, state: FSMContext):
-       
-        states: dict = await state.get_data()
-        message_id_with_schedule = callback_query.message.message_id
-        start_message_id = states.get("start_message_bot")
         chat_id = callback_query.message.chat.id
-        kb = create_inline_keyboard(week)
-        await bot.delete_message(chat_id=chat_id, message_id=message_id_with_schedule)
-        
-        await Schedule.click_show_schedule.set()
-        await bot.edit_message_text(text=Message.show_schedule, chat_id=chat_id, message_id=start_message_id, reply_markup=kb)
+        res = ""
+        products = Products.select()
+        for product in products:
+                
+                res += product.name + "\n"
+        await bot.send_message(chat_id=chat_id, text=f"Твой список покупок:\n {res}")
+
         

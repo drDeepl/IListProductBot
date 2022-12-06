@@ -7,6 +7,7 @@ name = "pypi"
 requests = "*"
 aiogram = "*"
 pdf2image = "*"
+peewee = "*"
 
 [dev-packages]
 
